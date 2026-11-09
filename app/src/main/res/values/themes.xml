@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Базовая тема приложения, совместимая с Material Components -->
-    <style name="Theme.DeviceModelApp" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <!-- Основные цвета приложения -->
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
+    <!-- Базовая тема приложения, использующая только встроенные системные ресурсы Android -->
+    <style name="Theme.DeviceModelApp" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <!-- Системные элементы не требуют внешней разметки цветов -->
     </style>
 </resources>
