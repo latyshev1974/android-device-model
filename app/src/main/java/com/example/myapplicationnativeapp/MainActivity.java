@@ -30,6 +30,7 @@ public class MainActivity extends AppCompatActivity {
     private String hardwareAndSensorInfo = "";
     private String batteryInfo = "";
 
+    // Приемник системных событий для отслеживания батареи в реальном времени
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -53,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
                     "Температура: " + temperatureCelsius + "°C\n" +
                     "Статус: " + statusText + "\n\n";
 
-            // При каждом изменении батареи также обновляем данные о памяти
+            // При каждом изменении состояния батареи обновляем данные о памяти
             refreshMemoryInfo();
             updateScreenText();
         }
@@ -65,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         message = findViewById(R.id.message);
-        Button btnCopy = findViewById(View.id.btn_copy != 0 ? View.id.btn_copy : R.id.btn_copy);
+        Button btnCopy = findViewById(R.id.btn_copy);
 
         // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
@@ -94,10 +95,10 @@ public class MainActivity extends AppCompatActivity {
         
         hardwareAndSensorInfo = infoBuilder.toString();
 
-        // Первичный сбор данных о памяти
+        // Первичный сбор данных о памяти устройства
         refreshMemoryInfo();
 
-        // 3. Логика копирования всей отображаемой информации
+        // 3. Динамическая логика копирования всей отображаемой информации
         btnCopy.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
