@@ -1,5 +1,6 @@
 package com.example.myapplicationnativeapp;
 
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
@@ -17,12 +18,11 @@ import android.os.StatFs;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.appcompat.app.AppCompatActivity;
 import java.io.File;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private TextView message;
     private String memoryInfoStr = "";
@@ -30,7 +30,6 @@ public class MainActivity extends AppCompatActivity {
     private String batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nЗагрузка данных...\n\n";
     private boolean isReceiverRegistered = false;
 
-    // Облегченный приемник батареи БЕЗ вызова тяжелых методов внутри
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -69,7 +68,6 @@ public class MainActivity extends AppCompatActivity {
         message = findViewById(R.id.message);
         Button btnCopy = findViewById(R.id.btn_copy);
 
-        // 1. Безопасно собираем характеристики железа
         String architecture = "unknown";
         if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
             architecture = Build.SUPPORTED_ABIS[0];
@@ -77,7 +75,7 @@ public class MainActivity extends AppCompatActivity {
 
         StringBuilder infoBuilder = new StringBuilder();
         infoBuilder.append("--- СВЕДЕНИЯ О ЖЕЛЕЗЕ ---\n")
-                .append("Модель: ").append(Build.MODEL != null ? Build.MODEL : "unknown").append("\n")
+                .append("Модель (Build.MODEL): ").append(Build.MODEL != null ? Build.MODEL : "unknown").append("\n")
                 .append("Производитель: ").append(Build.MANUFACTURER != null ? Build.MANUFACTURER : "unknown").append("\n")
                 .append("Версия Android: ").append(Build.VERSION.RELEASE != null ? Build.VERSION.RELEASE : "unknown")
                 .append(" (API ").append(Build.VERSION.SDK_INT).append(")\n")
@@ -85,14 +83,13 @@ public class MainActivity extends AppCompatActivity {
                 .append("Плата: ").append(Build.BOARD != null ? Build.BOARD : "unknown").append("\n")
                 .append("Архитектура: ").append(architecture).append("\n\n");
 
-        // 2. Безопасное получение списка датчиков (максимум 20 для эмуляторов)
         infoBuilder.append("--- ДОСТУПНЫЕ ДАТЧИКИ ---\n");
         try {
             SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             if (sensorManager != null) {
                 List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
                 if (sensorList != null && !sensorList.isEmpty()) {
-                    int limit = Math.min(sensorList.size(), 20);
+                    int limit = Math.min(sensorList.size(), 25);
                     for (int i = 0; i < limit; i++) {
                         Sensor s = sensorList.get(i);
                         if (s != null && s.getName() != null) {
@@ -109,11 +106,9 @@ public class MainActivity extends AppCompatActivity {
         
         hardwareAndSensorInfo = infoBuilder.toString();
 
-        // Запускаем сбор памяти один раз при старте, чтобы не перегружать главный поток
         refreshMemoryInfo();
         updateScreenText();
 
-        // 3. Логика копирования
         if (btnCopy != null) {
             btnCopy.setOnClickListener(v -> {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -121,7 +116,7 @@ public class MainActivity extends AppCompatActivity {
                 ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(clip);
-                    Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Информация скопирована в буфер!", Toast.LENGTH_SHORT).show();
                 }
             });
         }
@@ -129,7 +124,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshMemoryInfo() {
         try {
-            // Оперативная память (RAM)
             ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
             ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
             double totalRam = 0, availRam = 0;
@@ -139,7 +133,6 @@ public class MainActivity extends AppCompatActivity {
                 availRam = memoryInfo.availMem / (1024.0 * 1024.0 * 1024.0);
             }
 
-            // Встроенный диск (ROM)
             File path = Environment.getDataDirectory();
             double totalRom = 0, availRom = 0;
             if (path != null) {
@@ -153,7 +146,7 @@ public class MainActivity extends AppCompatActivity {
                     String.format(Locale.US, "Оперативная память (RAM): %.2f ГБ свободно из %.2f ГБ\n", availRam, totalRam) +
                     String.format(Locale.US, "Внутреннее хранилище (ROM): %.2f ГБ свободно из %.2f ГБ\n\n", availRom, totalRom);
         } catch (Exception e) {
-            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\nДанные памяти недоступны в эмуляторе.\n\n";
+            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\nДанные памяти недоступны.\n\n";
         }
     }
 
