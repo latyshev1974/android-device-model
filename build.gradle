@@ -4,8 +4,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // Подключаем плагин сборки Android
-        classpath 'com.android.tools.build:gradle:8.2.2'
+        // Обновляем плагин сборки Android до версии, совместимой с новым Gradle
+        classpath 'com.android.tools.build:gradle:8.7.3'
     }
 }
 
