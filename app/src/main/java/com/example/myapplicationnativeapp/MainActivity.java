@@ -30,17 +30,18 @@ public class MainActivity extends AppCompatActivity {
     private String hardwareAndSensorInfo = "";
     private String batteryInfo = "";
 
-    // Приемник системных событий для отслеживания батареи в реальном времени
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
             int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
             
             int temperatureRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
             double temperatureCelsius = temperatureRaw / 10.0;
-            float batteryPct = (level / (float) scale) * 100;
+            float batteryPct = (scale > 0) ? (level / (float) scale) * 100 : 0;
 
             String statusText = "Не заряжается";
             if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
@@ -54,7 +55,6 @@ public class MainActivity extends AppCompatActivity {
                     "Температура: " + temperatureCelsius + "°C\n" +
                     "Статус: " + statusText + "\n\n";
 
-            // При каждом изменении состояния батареи обновляем данные о памяти
             refreshMemoryInfo();
             updateScreenText();
         }
@@ -68,95 +68,127 @@ public class MainActivity extends AppCompatActivity {
         message = findViewById(R.id.message);
         Button btnCopy = findViewById(R.id.btn_copy);
 
-        // Безопасное определение архитектуры процессора (защита от вылета в эмуляторах)
-        String architecture = (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) 
-                ? Build.SUPPORTED_ABIS[0] 
-                : "unknown";
+        // Безопасное определение архитектуры процессора (Защита от краша на эмуляторах)
+        String architecture = "unknown";
+        if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
+            architecture = Build.SUPPORTED_ABIS[0];
+        }
 
         // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
         infoBuilder.append("--- СВЕДЕНИЯ О ЖЕЛЕЗЕ ---\n")
-                .append("Модель: ").append(Build.MODEL).append("\n")
-                .append("Производитель: ").append(Build.MANUFACTURER).append("\n")
-                .append("Версия Android: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n")
-                .append("Процессор: ").append(Build.HARDWARE).append("\n")
-                .append("Плата: ").append(Build.BOARD).append("\n")
+                .append("Модель: ").append(Build.MODEL != null ? Build.MODEL : "unknown").append("\n")
+                .append("Производитель: ").append(Build.MANUFACTURER != null ? Build.MANUFACTURER : "unknown").append("\n")
+                .append("Версия Android: ").append(Build.VERSION.RELEASE != null ? Build.VERSION.RELEASE : "unknown")
+                .append(" (API ").append(Build.VERSION.SDK_INT).append(")\n")
+                .append("Процессор: ").append(Build.HARDWARE != null ? Build.HARDWARE : "unknown").append("\n")
+                .append("Плата: ").append(Build.BOARD != null ? Build.BOARD : "unknown").append("\n")
                 .append("Архитектура: ").append(architecture).append("\n\n");
 
-        // 2. Получаем список всех датчиков
+        // 2. Безопасное получение списка всех датчиков
         infoBuilder.append("--- ДОСТУПНЫЕ ДАТЧИКИ ---\n");
-        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        if (sensorManager != null) {
-            List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
-            if (sensorList != null && !sensorList.isEmpty()) {
-                for (int i = 0; i < sensorList.size(); i++) {
-                    Sensor s = sensorList.get(i);
-                    infoBuilder.append(i + 1).append(". ").append(s.getName()).append(" (тип: ").append(s.getStringType()).append(")\n");
+        try {
+            SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            if (sensorManager != null) {
+                List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
+                if (sensorList != null && !sensorList.isEmpty()) {
+                    for (int i = 0; i < sensorList.size(); i++) {
+                        Sensor s = sensorList.get(i);
+                        if (s != null) {
+                            String sensorName = s.getName() != null ? s.getName() : "Unknown Sensor";
+                            String sensorType = "unknown";
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                                sensorType = s.getStringType() != null ? s.getStringType() : "unknown";
+                            }
+                            infoBuilder.append(i + 1).append(". ").append(sensorName).append(" (тип: ").append(sensorType).append(")\n");
+                        }
+                    }
+                } else {
+                    infoBuilder.append("Датчики не найдены.\n");
                 }
             } else {
-                infoBuilder.append("Датчики не найдены.\n");
+                infoBuilder.append("SensorManager недоступен.\n");
             }
+        } catch (Exception e) {
+            infoBuilder.append("Ошибка получения датчиков: ").append(e.getMessage()).append("\n");
         }
         
         hardwareAndSensorInfo = infoBuilder.toString();
 
-        // Первичный сбор данных о памяти устройства
         refreshMemoryInfo();
+        updateScreenText();
 
-        // 3. Динамическая логика копирования всей отображаемой информации
-        btnCopy.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
-                ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
-                if (clipboard != null) {
-                    clipboard.setPrimaryClip(clip);
-                    Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
+        // 3. Динамическая логика копирования
+        if (btnCopy != null) {
+            btnCopy.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
+                    ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(clip);
+                        Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
-    // Метод получения актуальных данных об оперативной (RAM) и постоянной памяти (ROM)
     private void refreshMemoryInfo() {
-        // ОЗУ (RAM)
-        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-        double totalRam = 0;
-        double availRam = 0;
-        if (activityManager != null) {
-            activityManager.getMemoryInfo(memoryInfo);
-            totalRam = memoryInfo.totalMem / (1024.0 * 1024.0 * 1024.0);
-            availRam = memoryInfo.availMem / (1024.0 * 1024.0 * 1024.0);
+        try {
+            // ОЗУ (RAM)
+            ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+            double totalRam = 0;
+            double availRam = 0;
+            if (activityManager != null) {
+                activityManager.getMemoryInfo(memoryInfo);
+                totalRam = memoryInfo.totalMem / (1024.0 * 1024.0 * 1024.0);
+                availRam = memoryInfo.availMem / (1024.0 * 1024.0 * 1024.0);
+            }
+
+            // Встроенный диск (ROM)
+            File path = Environment.getDataDirectory();
+            double totalRom = 0;
+            double availRom = 0;
+            if (path != null) {
+                StatFs stat = new StatFs(path.getPath());
+                long blockSize = stat.getBlockSizeLong();
+                long totalBlocks = stat.getBlockCountLong();
+                long availableBlocks = stat.getAvailableBlocksLong();
+                totalRom = (totalBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
+                availRom = (availableBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
+            }
+
+            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\n" +
+                    String.format(Locale.US, "Оперативная память (RAM): %.2f ГБ свободно из %.2f ГБ\n", availRam, totalRam) +
+                    String.format(Locale.US, "Внутреннее хранилище (ROM): %.2f ГБ свободно из %.2f ГБ\n\n", availRom, totalRom);
+        } catch (Exception e) {
+            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\nОшибка получения данных памяти.\n\n";
         }
-
-        // Встроенный диск (ROM)
-        File path = Environment.getDataDirectory();
-        StatFs stat = new StatFs(path.getPath());
-        long blockSize = stat.getBlockSizeLong();
-        long totalBlocks = stat.getBlockCountLong();
-        long availableBlocks = stat.getAvailableBlocksLong();
-
-        double totalRom = (totalBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
-        double availRom = (availableBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
-
-        memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\n" +
-                String.format(Locale.US, "Оперативная память (RAM): %.2f ГБ свободно из %.2f ГБ\n", availRam, totalRam) +
-                String.format(Locale.US, "Внутреннее хранилище (ROM): %.2f ГБ свободно из %.2f ГБ\n\n", availRom, totalRom);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        registerReceiver(batteryReceiver, filter);
+        try {
+            IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            registerReceiver(batteryReceiver, filter);
+        } catch (Exception e) {
+            batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nНе удалось запустить мониторинг.\n\n";
+            updateScreenText();
+        }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        unregisterReceiver(batteryReceiver);
+        try {
+            unregisterReceiver(batteryReceiver);
+        } catch (Exception e) {
+            // Игнорируем
+        }
     }
 
     private void updateScreenText() {
