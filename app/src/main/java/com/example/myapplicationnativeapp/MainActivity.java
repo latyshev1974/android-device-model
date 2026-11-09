@@ -1,4 +1,5 @@
 package com.example.myapplicationnativeapp;
+
 import android.os.Build;
 import android.os.Bundle;
 import android.widget.TextView;
@@ -9,7 +10,16 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         TextView message = findViewById(R.id.message);
-        message.setText(Build.MODEL);
+
+        // Формируем детальную информацию о железе устройства
+        String hardwareInfo = "Модель: " + Build.MODEL + "\n" +
+                              "Процессор: " + Build.HARDWARE + "\n" +
+                              "Плата: " + Build.BOARD + "\n" +
+                              "Архитектура: " + Build.SUPPORTED_ABIS[0];
+
+        // Выводим текст на экран
+        message.setText(hardwareInfo);
     }
 }
