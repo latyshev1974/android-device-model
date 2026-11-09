@@ -2,13 +2,29 @@
 <RelativeLayout xmlns:android="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="24dp">
+
+    <!-- Текстовое поле для характеристик устройства -->
     <TextView
         android:id="@+id/message"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:text="Загрузка..."
-        android:textSize="24sp"
-        android:textStyle="bold" />
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="100dp"
+        android:text="Загрузка характеристик..."
+        android:textSize="18sp"
+        android:textColor="#333333"
+        android:lineSpacingExtra="8dp" />
+
+    <!-- Кнопка для копирования текста в буфер обмена -->
+    <Button
+        android:id="@+id/btn_copy"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="50dp"
+        android:text="Копировать характеристики"
+        android:textSize="16sp"
+        android:textAllCaps="false" />
+
 </RelativeLayout>
