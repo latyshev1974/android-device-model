@@ -1,5 +1,6 @@
 package com.example.myapplicationnativeapp;
 
+import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -11,35 +12,35 @@ import android.hardware.SensorManager;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.StatFs;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.File;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
     private TextView message;
+    private String memoryInfoStr = "";
     private String hardwareAndSensorInfo = "";
     private String batteryInfo = "";
 
-    // Приемник системных событий для отслеживания батареи в реальном времени
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // Получаем уровень заряда
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
             int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
             
-            // Получаем температуру (передается в десятых долях градуса Цельсия)
             int temperatureRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
             double temperatureCelsius = temperatureRaw / 10.0;
-
             float batteryPct = (level / (float) scale) * 100;
 
-            // Определяем статус зарядки
             String statusText = "Не заряжается";
             if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
                 statusText = "Заряжается";
@@ -47,13 +48,13 @@ public class MainActivity extends AppCompatActivity {
                 statusText = "Полный заряд";
             }
 
-            // Формируем блок информации о батарее
             batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\n" +
                     "Заряд: " + (int) batteryPct + "%\n" +
                     "Температура: " + temperatureCelsius + "°C\n" +
                     "Статус: " + statusText + "\n\n";
 
-            // Обновляем текст на экране, соединяя батарею, железо и датчики
+            // При каждом изменении батареи также обновляем данные о памяти
+            refreshMemoryInfo();
             updateScreenText();
         }
     };
@@ -64,9 +65,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         message = findViewById(R.id.message);
-        Button btnCopy = findViewById(R.id.btn_copy);
+        Button btnCopy = findViewById(View.id.btn_copy != 0 ? View.id.btn_copy : R.id.btn_copy);
 
-        // 1. Собираем статические характеристики железа
+        // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
         infoBuilder.append("--- СВЕДЕНИЯ О ЖЕЛЕЗЕ ---\n")
                 .append("Модель: ").append(Build.MODEL).append("\n")
@@ -93,12 +94,15 @@ public class MainActivity extends AppCompatActivity {
         
         hardwareAndSensorInfo = infoBuilder.toString();
 
-        // 3. Динамическая логика копирования всей отображаемой информации
+        // Первичный сбор данных о памяти
+        refreshMemoryInfo();
+
+        // 3. Логика копирования всей отображаемой информации
         btnCopy.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                String fullTextToCopy = batteryInfo + hardwareAndSensorInfo;
+                String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
                 ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(clip);
@@ -108,7 +112,34 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Регистрируем приемник при запуске активности
+    // Метод получения актуальных данных об оперативной (RAM) и постоянной памяти (ROM)
+    private void refreshMemoryInfo() {
+        // ОЗУ (RAM)
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        double totalRam = 0;
+        double availRam = 0;
+        if (activityManager != null) {
+            activityManager.getMemoryInfo(memoryInfo);
+            totalRam = memoryInfo.totalMem / (1024.0 * 1024.0 * 1024.0);
+            availRam = memoryInfo.availMem / (1024.0 * 1024.0 * 1024.0);
+        }
+
+        // Встроенный диск (ROM)
+        File path = Environment.getDataDirectory();
+        StatFs stat = new StatFs(path.getPath());
+        long blockSize = stat.getBlockSizeLong();
+        long totalBlocks = stat.getBlockCountLong();
+        long availableBlocks = stat.getAvailableBlocksLong();
+
+        double totalRom = (totalBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
+        double availRom = (availableBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
+
+        memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\n" +
+                String.format(Locale.US, "Оперативная память (RAM): %.2f ГБ свободно из %.2f ГБ\n", availRam, totalRam) +
+                String.format(Locale.US, "Внутреннее хранилище (ROM): %.2f ГБ свободно из %.2f ГБ\n\n", availRom, totalRom);
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -116,18 +147,17 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(batteryReceiver, filter);
     }
 
-    // Незабываем отписать приемник при закрытии приложения, чтобы не тратить ресурсы
     @Override
     protected void onStop() {
         super.onStop();
         unregisterReceiver(batteryReceiver);
     }
 
-    // Метод для склейки блоков информации и обновления UI
     private void updateScreenText() {
         if (message != null) {
-            String fullDisplayInfo = batteryInfo + hardwareAndSensorInfo;
+            String fullDisplayInfo = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
             message.setText(fullDisplayInfo);
         }
     }
 }
+
