@@ -68,6 +68,11 @@ public class MainActivity extends AppCompatActivity {
         message = findViewById(R.id.message);
         Button btnCopy = findViewById(R.id.btn_copy);
 
+        // Безопасное определение архитектуры процессора (защита от вылета в эмуляторах)
+        String architecture = (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) 
+                ? Build.SUPPORTED_ABIS[0] 
+                : "unknown";
+
         // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
         infoBuilder.append("--- СВЕДЕНИЯ О ЖЕЛЕЗЕ ---\n")
@@ -76,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
                 .append("Версия Android: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n")
                 .append("Процессор: ").append(Build.HARDWARE).append("\n")
                 .append("Плата: ").append(Build.BOARD).append("\n")
-                .append("Архитектура: ").append(Build.SUPPORTED_ABIS[0]).append("\n\n");
+                .append("Архитектура: ").append(architecture).append("\n\n");
 
         // 2. Получаем список всех датчиков
         infoBuilder.append("--- ДОСТУПНЫЕ ДАТЧИКИ ---\n");
@@ -161,4 +166,3 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
-
