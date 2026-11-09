@@ -14,14 +14,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.StatFs;
-import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import java.io.File;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.List;
 import java.util.Locale;
 
@@ -30,16 +27,15 @@ public class MainActivity extends AppCompatActivity {
     private TextView message;
     private String memoryInfoStr = "";
     private String hardwareAndSensorInfo = "";
-    private String batteryInfo = "";
+    private String batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nЗагрузка данных...\n\n";
     private boolean isReceiverRegistered = false;
 
-    // Безопасный приемник батареи
+    // Облегченный приемник батареи БЕЗ вызова тяжелых методов внутри
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
             try {
-                if (intent == null) return;
-                
                 int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
                 int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
                 int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
@@ -60,52 +56,25 @@ public class MainActivity extends AppCompatActivity {
                         "Температура: " + temperatureCelsius + "°C\n" +
                         "Статус: " + statusText + "\n\n";
 
-                refreshMemoryInfo();
                 updateScreenText();
-            } catch (Exception e) {
-                batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nОшибка обработки данных батареи.\n\n";
-                updateScreenText();
-            }
+            } catch (Exception ignored) {}
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Добавляем глобальный перехватчик ошибок, чтобы приложение НЕ вылетало,
-        // а показывало текст ошибки (StackTrace) прямо на экране эмулятора!
-        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-            @Override
-            public void uncaughtException(Thread thread, Throwable ex) {
-                StringWriter sw = new StringWriter();
-                ex.printStackTrace(new PrintWriter(sw));
-                final String exceptionAsString = sw.toString();
-                
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (message != null) {
-                            message.setText("КРИТИЧЕСКИЙ СБОЙ ПРИЛОЖЕНИЯ:\n\n" + exceptionAsString);
-                        }
-                    }
-                });
-            }
-        });
-
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         message = findViewById(R.id.message);
         Button btnCopy = findViewById(R.id.btn_copy);
 
-        // Безопасное определение архитектуры
+        // 1. Безопасно собираем характеристики железа
         String architecture = "unknown";
-        try {
-            if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
-                architecture = Build.SUPPORTED_ABIS[0];
-            }
-        } catch (Exception ignored) {}
+        if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
+            architecture = Build.SUPPORTED_ABIS[0];
+        }
 
-        // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
         infoBuilder.append("--- СВЕДЕНИЯ О ЖЕЛЕЗЕ ---\n")
                 .append("Модель: ").append(Build.MODEL != null ? Build.MODEL : "unknown").append("\n")
@@ -116,49 +85,43 @@ public class MainActivity extends AppCompatActivity {
                 .append("Плата: ").append(Build.BOARD != null ? Build.BOARD : "unknown").append("\n")
                 .append("Архитектура: ").append(architecture).append("\n\n");
 
-        // 2. Безопасное получение списка датчиков
+        // 2. Безопасное получение списка датчиков (максимум 20 для эмуляторов)
         infoBuilder.append("--- ДОСТУПНЫЕ ДАТЧИКИ ---\n");
         try {
             SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             if (sensorManager != null) {
                 List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
                 if (sensorList != null && !sensorList.isEmpty()) {
-                    for (int i = 0; i < Math.min(sensorList.size(), 30); i++) { // Ограничим 30 датчиками для стабильности
+                    int limit = Math.min(sensorList.size(), 20);
+                    for (int i = 0; i < limit; i++) {
                         Sensor s = sensorList.get(i);
-                        if (s != null) {
-                            String sensorName = s.getName() != null ? s.getName() : "Unknown Sensor";
-                            infoBuilder.append(i + 1).append(". ").append(sensorName).append("\n");
+                        if (s != null && s.getName() != null) {
+                            infoBuilder.append(i + 1).append(". ").append(s.getName()).append("\n");
                         }
                     }
                 } else {
                     infoBuilder.append("Датчики не найдены.\n");
                 }
-            } else {
-                infoBuilder.append("SensorManager недоступен.\n");
             }
         } catch (Exception e) {
-            infoBuilder.append("Ошибка получения датчиков: ").append(e.getMessage()).append("\n");
+            infoBuilder.append("Не удалось загрузить датчики.\n");
         }
         
         hardwareAndSensorInfo = infoBuilder.toString();
 
+        // Запускаем сбор памяти один раз при старте, чтобы не перегружать главный поток
         refreshMemoryInfo();
         updateScreenText();
 
         // 3. Логика копирования
         if (btnCopy != null) {
-            btnCopy.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    try {
-                        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                        String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
-                        ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
-                        if (clipboard != null) {
-                            clipboard.setPrimaryClip(clip);
-                            Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
-                        }
-                    } catch (Exception ignored) {}
+            btnCopy.setOnClickListener(v -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
+                ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
                 }
             });
         }
@@ -166,11 +129,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshMemoryInfo() {
         try {
-            // ОЗУ (RAM)
+            // Оперативная память (RAM)
             ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
             ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-            double totalRam = 0;
-            double availRam = 0;
+            double totalRam = 0, availRam = 0;
             if (activityManager != null) {
                 activityManager.getMemoryInfo(memoryInfo);
                 totalRam = memoryInfo.totalMem / (1024.0 * 1024.0 * 1024.0);
@@ -179,22 +141,19 @@ public class MainActivity extends AppCompatActivity {
 
             // Встроенный диск (ROM)
             File path = Environment.getDataDirectory();
-            double totalRom = 0;
-            double availRom = 0;
+            double totalRom = 0, availRom = 0;
             if (path != null) {
                 StatFs stat = new StatFs(path.getPath());
                 long blockSize = stat.getBlockSizeLong();
-                long totalBlocks = stat.getBlockCountLong();
-                long availableBlocks = stat.getAvailableBlocksLong();
-                totalRom = (totalBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
-                availRom = (availableBlocks * blockSize) / (1024.0 * 1024.0 * 1024.0);
+                totalRom = (stat.getBlockCountLong() * blockSize) / (1024.0 * 1024.0 * 1024.0);
+                availRom = (stat.getAvailableBlocksLong() * blockSize) / (1024.0 * 1024.0 * 1024.0);
             }
 
             memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\n" +
                     String.format(Locale.US, "Оперативная память (RAM): %.2f ГБ свободно из %.2f ГБ\n", availRam, totalRam) +
                     String.format(Locale.US, "Внутреннее хранилище (ROM): %.2f ГБ свободно из %.2f ГБ\n\n", availRom, totalRom);
         } catch (Exception e) {
-            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\nОшибка получения данных памяти.\n\n";
+            memoryInfoStr = "--- ПАМЯТЬ УСТРОЙСТВА ---\nДанные памяти недоступны в эмуляторе.\n\n";
         }
     }
 
@@ -207,10 +166,7 @@ public class MainActivity extends AppCompatActivity {
                 registerReceiver(batteryReceiver, filter);
                 isReceiverRegistered = true;
             }
-        } catch (Exception e) {
-            batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nНе удалось запустить мониторинг.\n\n";
-            updateScreenText();
-        }
+        } catch (Exception ignored) {}
     }
 
     @Override
