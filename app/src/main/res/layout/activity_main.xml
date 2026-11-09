@@ -2,9 +2,9 @@
 <RelativeLayout xmlns:android="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp">
+    android:padding="24dp"
+    android:background="#FFFFFF">
 
-    <!-- ScrollView позволяет прокручивать длинный список датчиков -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -15,13 +15,12 @@
             android:id="@+id/message"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Загрузка характеристик и датчиков..."
+            android:text="Загрузка диагностических данных..."
             android:textSize="16sp"
-            android:textColor="#333333"
+            android:textColor="#222222"
             android:lineSpacingExtra="6dp" />
     </ScrollView>
 
-    <!-- Кнопка для копирования всей собранной информации -->
     <Button
         android:id="@+id/btn_copy"
         android:layout_width="match_parent"
