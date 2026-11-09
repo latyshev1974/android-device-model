@@ -20,6 +20,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.List;
 import java.util.Locale;
 
@@ -29,50 +31,79 @@ public class MainActivity extends AppCompatActivity {
     private String memoryInfoStr = "";
     private String hardwareAndSensorInfo = "";
     private String batteryInfo = "";
+    private boolean isReceiverRegistered = false;
 
+    // Безопасный приемник батареи
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent == null) return;
-            
-            int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-            
-            int temperatureRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
-            double temperatureCelsius = temperatureRaw / 10.0;
-            float batteryPct = (scale > 0) ? (level / (float) scale) * 100 : 0;
+            try {
+                if (intent == null) return;
+                
+                int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                int temperatureRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
+                
+                double temperatureCelsius = temperatureRaw / 10.0;
+                float batteryPct = (scale > 0) ? (level / (float) scale) * 100 : 0;
 
-            String statusText = "Не заряжается";
-            if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
-                statusText = "Заряжается";
-            } else if (status == BatteryManager.BATTERY_STATUS_FULL) {
-                statusText = "Полный заряд";
+                String statusText = "Не заряжается";
+                if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
+                    statusText = "Заряжается";
+                } else if (status == BatteryManager.BATTERY_STATUS_FULL) {
+                    statusText = "Полный заряд";
+                }
+
+                batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\n" +
+                        "Заряд: " + (int) batteryPct + "%\n" +
+                        "Температура: " + temperatureCelsius + "°C\n" +
+                        "Статус: " + statusText + "\n\n";
+
+                refreshMemoryInfo();
+                updateScreenText();
+            } catch (Exception e) {
+                batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nОшибка обработки данных батареи.\n\n";
+                updateScreenText();
             }
-
-            batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\n" +
-                    "Заряд: " + (int) batteryPct + "%\n" +
-                    "Температура: " + temperatureCelsius + "°C\n" +
-                    "Статус: " + statusText + "\n\n";
-
-            refreshMemoryInfo();
-            updateScreenText();
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Добавляем глобальный перехватчик ошибок, чтобы приложение НЕ вылетало,
+        // а показывало текст ошибки (StackTrace) прямо на экране эмулятора!
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread thread, Throwable ex) {
+                StringWriter sw = new StringWriter();
+                ex.printStackTrace(new PrintWriter(sw));
+                final String exceptionAsString = sw.toString();
+                
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (message != null) {
+                            message.setText("КРИТИЧЕСКИЙ СБОЙ ПРИЛОЖЕНИЯ:\n\n" + exceptionAsString);
+                        }
+                    }
+                });
+            }
+        });
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         message = findViewById(R.id.message);
         Button btnCopy = findViewById(R.id.btn_copy);
 
-        // Безопасное определение архитектуры процессора (Защита от краша на эмуляторах)
+        // Безопасное определение архитектуры
         String architecture = "unknown";
-        if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
-            architecture = Build.SUPPORTED_ABIS[0];
-        }
+        try {
+            if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0) {
+                architecture = Build.SUPPORTED_ABIS[0];
+            }
+        } catch (Exception ignored) {}
 
         // 1. Собираем характеристики железа
         StringBuilder infoBuilder = new StringBuilder();
@@ -85,22 +116,18 @@ public class MainActivity extends AppCompatActivity {
                 .append("Плата: ").append(Build.BOARD != null ? Build.BOARD : "unknown").append("\n")
                 .append("Архитектура: ").append(architecture).append("\n\n");
 
-        // 2. Безопасное получение списка всех датчиков
+        // 2. Безопасное получение списка датчиков
         infoBuilder.append("--- ДОСТУПНЫЕ ДАТЧИКИ ---\n");
         try {
             SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             if (sensorManager != null) {
                 List<Sensor> sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL);
                 if (sensorList != null && !sensorList.isEmpty()) {
-                    for (int i = 0; i < sensorList.size(); i++) {
+                    for (int i = 0; i < Math.min(sensorList.size(), 30); i++) { // Ограничим 30 датчиками для стабильности
                         Sensor s = sensorList.get(i);
                         if (s != null) {
                             String sensorName = s.getName() != null ? s.getName() : "Unknown Sensor";
-                            String sensorType = "unknown";
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                                sensorType = s.getStringType() != null ? s.getStringType() : "unknown";
-                            }
-                            infoBuilder.append(i + 1).append(". ").append(sensorName).append(" (тип: ").append(sensorType).append(")\n");
+                            infoBuilder.append(i + 1).append(". ").append(sensorName).append("\n");
                         }
                     }
                 } else {
@@ -118,18 +145,20 @@ public class MainActivity extends AppCompatActivity {
         refreshMemoryInfo();
         updateScreenText();
 
-        // 3. Динамическая логика копирования
+        // 3. Логика копирования
         if (btnCopy != null) {
             btnCopy.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
-                    ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
-                    if (clipboard != null) {
-                        clipboard.setPrimaryClip(clip);
-                        Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
-                    }
+                    try {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        String fullTextToCopy = batteryInfo + memoryInfoStr + hardwareAndSensorInfo;
+                        ClipData clip = ClipData.newPlainText("Device Diagnostic Info", fullTextToCopy);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(clip);
+                            Toast.makeText(MainActivity.this, "Вся информация скопирована!", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception ignored) {}
                 }
             });
         }
@@ -173,8 +202,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         try {
-            IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-            registerReceiver(batteryReceiver, filter);
+            if (!isReceiverRegistered) {
+                IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                registerReceiver(batteryReceiver, filter);
+                isReceiverRegistered = true;
+            }
         } catch (Exception e) {
             batteryInfo = "--- СОСТОЯНИЕ БАТАРЕИ ---\nНе удалось запустить мониторинг.\n\n";
             updateScreenText();
@@ -185,10 +217,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         try {
-            unregisterReceiver(batteryReceiver);
-        } catch (Exception e) {
-            // Игнорируем
-        }
+            if (isReceiverRegistered) {
+                unregisterReceiver(batteryReceiver);
+                isReceiverRegistered = false;
+            }
+        } catch (Exception ignored) {}
     }
 
     private void updateScreenText() {
